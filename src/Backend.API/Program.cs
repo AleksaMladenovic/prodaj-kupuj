@@ -1,60 +1,89 @@
+// --- USING DIREKTIVE ---
+// Obavezno dodaj using direktive za tvoje projekte i biblioteke
 using Cassandra;
 using StackExchange.Redis;
-// Swashbuckle namespace nije potreban gore, koristi se automatski kroz ekstenzije
+using MyApp.CommonLayer.Interfaces;
+using MyApp.DatabaseLayer.Repositories;
+using MyApp.BusinessLayer.Services;
+using MyApp.Api.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 1. BAZE (Redis & Cassandra) ---
+// --- 1. KONFIGURACIJA SERVISA (Dependency Injection) ---
+
+// CORS Politika - AŽURIRANO: Dodato AllowCredentials() za SignalR
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // Tvoja React adresa
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials(); // KLJUČNO ZA SIGNALR!
+    });
+});
+
+// BAZE (Redis & Cassandra) - Tvoja postojeća konfiguracija je odlična
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp => 
 {
-    return ConnectionMultiplexer.Connect("localhost:6379");
+    // U produkciji, ovaj string bi bio u appsettings.json
+    return ConnectionMultiplexer.Connect("localhost:6379"); 
 });
 
 builder.Services.AddSingleton<Cassandra.ISession>(sp => 
 {
     var cluster = Cluster.Builder()
-        .AddContactPoint("127.0.0.1")
+        .AddContactPoint("127.0.0.1") // U produkciji, ovo bi bilo u appsettings.json
         .WithPort(9042)
-        .WithLoadBalancingPolicy(new DCAwareRoundRobinPolicy("datacenter1"))
         .Build();
 
     var session = cluster.Connect();
+    // Ova logika za kreiranje keyspace-a je OK za razvoj
     session.Execute(@"
-        CREATE KEYSPACE IF NOT EXISTS oglasnik 
+        CREATE KEYSPACE IF NOT EXISTS impostor_game 
         WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
     ");
-    session.ChangeKeyspace("oglasnik");
+    session.ChangeKeyspace("impostor_game");
     return session;
 });
 
-// --- 2. SERVISI ---
-builder.Services.AddControllers();
+// NOVO: REGISTRACIJA SLOJEVA APLIKACIJE
+// Ovde povezujemo interfejse sa njihovim konkretnim implementacijama.
+// AddScoped je dobar izbor za životni vek ovih servisa.
+builder.Services.AddScoped<IGameRoomRepository, RedisGameRoomRepository>();
+builder.Services.AddScoped<ILobbyService, LobbyService>();
+// Kad budeš imao repozitorijume za Cassandru, registrovaćeš ih ovde.
 
-// --- 3. SWAGGER KONFIGURACIJA ---
-// Ovo dodaje servise potrebne za generisanje dokumentacije
+// NOVO: DODAVANJE SIGNALR-A
+builder.Services.AddSignalR();
+
+// KONTROLERI I SWAGGER - Bez promena
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("ReactPolicy", policy =>
-    {
-        policy.WithOrigins("http://localhost:5173").AllowAnyMethod().AllowAnyHeader();
-    });
-});
+
+// --- 2. KONFIGURACIJA APLIKACIJE (Middleware Pipeline) ---
 
 var app = builder.Build();
 
-// --- 4. SWAGGER UI ---
-// Ovo aktiviramo samo dok razvijamo aplikaciju
+// Swagger UI samo u razvojnom okruženju
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(); // Ovo pravi onaj lepi plavi ekran
+    app.UseSwaggerUI();
 }
 
-app.UseCors("ReactPolicy");
+// HTTPS Redirection (dobra praksa)
+app.UseHttpsRedirection();
+
+// Primeni CORS politiku - mora biti pre MapHub i MapControllers
+app.UseCors("AllowSpecificOrigin");
+
 app.UseAuthorization();
+
+// Mapiranje endpoint-a
 app.MapControllers();
+app.MapHub<GameHub>("/gamehub"); // NOVO: Mapira tvoj GameHub na URL "/gamehub"
 
 app.Run();

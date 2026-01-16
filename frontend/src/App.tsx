@@ -6,13 +6,14 @@ import Login from './components/login'
 import Home from './components/Home'
 import CompleteProfile from './components/CompleteProfile'
 import VerifyEmail from './components/VerifyEmail'
+import Room from './components/Room'
 
 function App() {
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Room />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route path="/complete-profile" element={<CompleteProfile />} />

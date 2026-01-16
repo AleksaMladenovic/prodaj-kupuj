@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Cassandra;
 using StackExchange.Redis;
 
-namespace Backend.Controllers;
+namespace MyApp.BackendApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
