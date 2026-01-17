@@ -8,10 +8,16 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { user , loggedUser } = useAuth();
+  const { user, loading } = useAuth();
 
-  
-  if (!user || !loggedUser()) {
+  // Čekaj dok se Firebase auth inicijalizuje
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen bg-neutral-950">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-red-600 border-opacity-50"></div>
+    </div>
+  }
+
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
-import { getAuth, signOut } from "firebase/auth";
+import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
+import { auth } from "../components/firebase";
 
 // 1. Definiši tip korisnika
 export interface User {
@@ -12,6 +13,7 @@ export interface User {
 // 2. Definiši tip contexta
 interface AuthContextType {
 	user: User | null;
+	loading: boolean;
 	login: (userData: User) => void;
 	logout: () => void;
     loggedUser: () => boolean;
@@ -25,13 +27,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // 4. Provider komponenta
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
 	const [user, setUser] = useState<User | null>(null);
+	const [loading, setLoading] = useState(true);
 
-	// Učitaj user iz localStorage pri mount-u
+
+	// Sync user sa Firebase auth na mount-u
 	useEffect(() => {
-		const storedUser = localStorage.getItem("user");
-		if (storedUser) {
-			setUser(JSON.parse(storedUser));
-		}
+		const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+			if (firebaseUser) {
+				const userData = {
+					id: firebaseUser.uid,
+					email: firebaseUser.email || "",
+					emailVerified: firebaseUser.emailVerified,
+				};
+				setUser(userData);
+				localStorage.setItem("user", JSON.stringify(userData));
+			} else {
+				setUser(null);
+				localStorage.removeItem("user");
+			}
+			setLoading(false);
+		});
+		return () => unsubscribe();
 	}, []);
 
 	// Snimi user u localStorage kad se promeni
@@ -74,7 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 	};
 
 	return (
-		<AuthContext.Provider value={{ user, login, logout, loggedUser, completeUser, setVerified }}>
+		<AuthContext.Provider value={{ user, loading, login, logout, loggedUser, completeUser, setVerified }}>
 			{children}
 		</AuthContext.Provider>
 	);
