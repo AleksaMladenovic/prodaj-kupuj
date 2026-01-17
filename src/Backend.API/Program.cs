@@ -6,6 +6,8 @@ using MyApp.CommonLayer.Interfaces;
 using MyApp.DatabaseLayer.Repositories;
 using MyApp.BusinessLayer.Services;
 using MyApp.Api.Hubs;
+using CommonLayer.Interfaces;
+using DatabaseLayer.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +45,26 @@ builder.Services.AddSingleton<Cassandra.ISession>(sp =>
         CREATE KEYSPACE IF NOT EXISTS impostor_game 
         WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
     ");
+
+    session.ChangeKeyspace("impostor_game");
+
+    session.Execute(@"
+        CREATE TABLE IF NOT EXISTS users (
+            user_id text PRIMARY KEY,
+            username text,
+            email text
+        );
+    ");
+
+    session.Execute(@"
+        CREATE TABLE IF NOT EXISTS user_stats (
+            user_id text PRIMARY KEY,
+            games_played counter,
+            wins_as_crewmate counter,
+            wins_as_impostor counter,
+            total_score counter
+        );"
+    );
     session.ChangeKeyspace("impostor_game");
     return session;
 });
@@ -52,6 +74,7 @@ builder.Services.AddSingleton<Cassandra.ISession>(sp =>
 // AddScoped je dobar izbor za životni vek ovih servisa.
 builder.Services.AddScoped<IGameRoomRepository, RedisGameRoomRepository>();
 builder.Services.AddScoped<ILobbyService, LobbyService>();
+builder.Services.AddScoped<IUserService, CassandraUserRepository>();
 // Kad budeš imao repozitorijume za Cassandru, registrovaćeš ih ovde.
 
 // NOVO: DODAVANJE SIGNALR-A
