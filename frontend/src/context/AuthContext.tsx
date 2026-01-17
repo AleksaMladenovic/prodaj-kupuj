@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { getAuth, signOut, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../components/firebase";
+import api from "../axios";
 
 // 1. Definiši tip korisnika
 export interface User {
@@ -31,15 +32,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
 	// Sync user sa Firebase auth na mount-u
-	useEffect(() => {
-		const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+	useEffect( () => {
+		const unsubscribe = onAuthStateChanged(auth,async (firebaseUser) => {
 			if (firebaseUser) {
 				const userData = {
 					id: firebaseUser.uid,
 					email: firebaseUser.email || "",
 					emailVerified: firebaseUser.emailVerified,
 				};
-				setUser(userData);
+				const userBaza = (await api.get(`/User/${firebaseUser.uid}`)).data;
+				setUser({...userData, username: userBaza.username});
 				localStorage.setItem("user", JSON.stringify(userData));
 			} else {
 				setUser(null);

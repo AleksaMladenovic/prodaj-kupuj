@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { HubConnectionBuilder, HubConnection } from '@microsoft/signalr';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Copy, Check, LogOut, Play } from 'lucide-react'; // Instaliraj lucide-react ako nemaš
+import { useAuth } from '../context/AuthContext';
 
 interface LobbyProps {
     roomId: string;
-    username: string;
 }
 
 interface Player {
@@ -14,11 +14,12 @@ interface Player {
     isHost: boolean;
 }
 
-const Lobby = ({ roomId, username }: LobbyProps) => {
+const Lobby = ({ roomId }: LobbyProps) => {
     const [connection, setConnection] = useState<HubConnection | null>(null);
     const [players, setPlayers] = useState<Player[]>([]);
     const [copied, setCopied] = useState(false);
-
+    const user = useAuth().user;
+    const username = user?.username;
     // Funkcija za kopiranje ID-a
     const copyToClipboard = () => {
         navigator.clipboard.writeText(roomId);

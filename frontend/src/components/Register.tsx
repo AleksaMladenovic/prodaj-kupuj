@@ -34,7 +34,13 @@ const Register = () => {
             }
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
+            console.log(`Registered user:`, user);
             if (user) {
+                api.post("/User/create", {
+                    "userId": user.uid,
+                    "username": username,
+                    "email": user.email!
+                })
                 login({ id: user.uid, email: user.email!, username: username });
                 await sendEmailVerification(user);
                 navigate("/verify-email");

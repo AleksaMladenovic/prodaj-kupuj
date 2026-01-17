@@ -1,9 +1,10 @@
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, Auth } from "firebase/auth";
 import { useState } from "react";
 import { auth } from "./firebase";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion } from "framer-motion";
+import api from "../axios";
 
 const Login = () => {
     const [email, setEmail] = useState("");
@@ -19,6 +20,9 @@ const Login = () => {
         try {
             await signInWithEmailAndPassword(auth, email, password);
             const user = auth.currentUser;
+            console.log(`user`, user);
+            // const userBaza = (await api.get(`/User/${user?.uid}`)).data;
+            // console.log(`userBaza`, userBaza);
             if (user) {
                 login({ id: user.uid, email: user.email!, emailVerified: user.emailVerified });
                 navigate("/");

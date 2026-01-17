@@ -7,18 +7,13 @@ const API_URL = "https://localhost:7277";
 
 function Room() {
     const [roomId, setRoomId] = useState<string | null>(null);
-    const [username, setUsername] = useState('');
     const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
-    const [usernameInput, setUsernameInput] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleCreateRoom = async () => {
-        const name = usernameInput.trim();
-        if (!name) { alert("Moraš uneti ime!"); return; }
         setLoading(true);
         try {
             const response = await axios.post(`${API_URL}/api/Rooms/create`);
-            setUsername(name);
             setRoomId(response.data.roomId);
         } catch (error) {
             alert("Greška na serveru!");
@@ -26,10 +21,8 @@ function Room() {
     };
 
     const handleJoinRoom = () => {
-        const name = usernameInput.trim();
         const code = joinRoomIdInput.trim();
-        if (!name || !code) { alert("Unesi i ime i kod sobe!"); return; }
-        setUsername(name);
+        if ( !code) { alert("Unesi kod sobe!"); return; }
         setRoomId(code);
     };
 
@@ -96,16 +89,6 @@ function Room() {
                             <p className="text-gray-500 tracking-[0.4em] text-xs mt-4 uppercase font-bold">Lobby Entry</p>
                         </div>
 
-                        <div className="max-w-md mx-auto mb-16">
-                            <label className="block text-[10px] uppercase tracking-[0.2em] text-gray-400 mb-3 text-center font-bold">Unesi svoj nadimak</label>
-                            <input
-                                type="text"
-                                placeholder="Npr. Killer2024"
-                                className="w-full bg-transparent border-b-2 border-white/10 focus:border-white px-4 py-4 text-center text-2xl font-bold focus:outline-none transition-all placeholder:text-gray-800"
-                                value={usernameInput}
-                                onChange={(e) => setUsernameInput(e.target.value)}
-                            />
-                        </div>
 
                         <div className="grid md:grid-cols-2 gap-12 md:gap-20 relative">
                             <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent" />
@@ -145,7 +128,7 @@ function Room() {
         );
     }
     
-    return <Lobby roomId={roomId} username={username} />;
+    return <Lobby roomId={roomId} />;
 }
 
 export default Room;
