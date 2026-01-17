@@ -3,10 +3,9 @@ import { HubConnectionBuilder, HubConnection } from '@microsoft/signalr';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Copy, Check, LogOut, Play } from 'lucide-react'; // Instaliraj lucide-react ako nemaš
 import { useAuth } from '../context/AuthContext';
+import { useParams } from 'react-router-dom';
 
-interface LobbyProps {
-    roomId: string;
-}
+
 
 interface Player {
     connectionId: string;
@@ -14,15 +13,16 @@ interface Player {
     isHost: boolean;
 }
 
-const Lobby = ({ roomId }: LobbyProps) => {
+const Lobby = () => {
     const [connection, setConnection] = useState<HubConnection | null>(null);
     const [players, setPlayers] = useState<Player[]>([]);
     const [copied, setCopied] = useState(false);
+    const {roomId} = useParams();
     const user = useAuth().user;
     const username = user?.username;
     // Funkcija za kopiranje ID-a
     const copyToClipboard = () => {
-        navigator.clipboard.writeText(roomId);
+        navigator.clipboard.writeText(roomId || "");
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };

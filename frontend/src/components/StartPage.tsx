@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion } from "framer-motion";
 
-const Home = () => {
+const StartPage = () => {
     const navigate = useNavigate();
     const { user, loggedUser, logout } = useAuth();
 
@@ -49,7 +49,7 @@ const Home = () => {
                         
                         <button 
                             className="w-full py-4 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95 shadow-[0_0_20px_rgba(255,255,255,0.2)]"
-                            onClick={() => navigate("/game")} // Ovde ideš na stranicu za kreiranje sobe
+                            onClick={() => navigate("/home")} // Ovde ideš na stranicu za kreiranje sobe
                         >
                             IGRAJ ODMAH
                         </button>
@@ -86,4 +86,4 @@ const Home = () => {
     );
 }
 
-export default Home;
+export default StartPage;

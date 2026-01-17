@@ -21,7 +21,7 @@ const VerifyEmail = () => {
                     if (user.emailVerified) {
                         setVerified(true);
                         clearInterval(interval);
-                        navigate("/game"); // Ili /complete-profile zavisno od tvog flow-a
+                        navigate("/home"); // Ili /complete-profile zavisno od tvog flow-a
                     }
                 } catch (err: any) {
                     setError("Došlo je do greške pri automatskoj proveri.");
