@@ -1,13 +1,14 @@
 // --- USING DIREKTIVE ---
 // Obavezno dodaj using direktive za tvoje projekte i biblioteke
+using BusinessLayer.Services;
 using Cassandra;
-using StackExchange.Redis;
-using MyApp.CommonLayer.Interfaces;
-using MyApp.DatabaseLayer.Repositories;
-using MyApp.BusinessLayer.Services;
-using MyApp.Api.Hubs;
 using CommonLayer.Interfaces;
 using DatabaseLayer.Repositories;
+using MyApp.Api.Hubs;
+using MyApp.BusinessLayer.Services;
+using MyApp.CommonLayer.Interfaces;
+using MyApp.DatabaseLayer.Repositories;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,6 +91,7 @@ builder.Services.AddScoped<IGameRoomRepository, RedisGameRoomRepository>();
 builder.Services.AddScoped<ILobbyService, LobbyService>();
 builder.Services.AddScoped<IUserService, CassandraUserRepository>();
 builder.Services.AddScoped<ISecretWordRepository, CassandraSecretWordRepository>();
+builder.Services.AddScoped<ISecretWordService, SecretWordService>();
 // Kad budeš imao repozitorijume za Cassandru, registrovaćeš ih ovde.
 
 // NOVO: DODAVANJE SIGNALR-A
