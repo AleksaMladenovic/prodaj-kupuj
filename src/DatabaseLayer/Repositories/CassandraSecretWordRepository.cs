@@ -48,25 +48,27 @@ namespace DatabaseLayer.Repositories
             if (count > 0) return;
 
             string[] wordsToSeed = {
-                "Pas", "Macka", "Lav", "Tigar", "Slon", "Zirafa", "Vuk", "Zmija", "Orao", "Ajkula",
-                "Delfin", "Majmun", "Konj", "Krava", "Svinja", "Pingvin", "Sova", "Zec", "Medved", "Pauk",
-                "Telefon", "Laptop", "Televizor", "Sat", "Kljuc", "Novcanik", "Knjiga", "Olovka", "Torba", "Kiseobran",
-                "Cipele", "Majica", "Jakna", "Naocale", "Kapa", "Sto", "Stolica", "Krevet", "Vrata", "Prozor",
-                "Cekic", "Srafciger", "Noz", "Kasika", "Viljuska", "Tanjir", "Casa", "Sveca", "Baterija", "Ogledalo",
-                "Pica", "Pljeskavica", "Sarma", "Burek", "Cevapi", "Sladoled", "Cokolada", "Jabuka", "Banana", "Kafa",
-                "Rakija", "Pivo", "Vino", "Mleko", "Hleb", "Jaje", "Sir", "Paradajz", "Krompir", "Luk",
-                "Skola", "Bolnica", "Crkva", "Kafana", "Bioskop", "Park", "Sumica", "Planina", "Reka", "More",
-                "Plaza", "Aerodrom", "Most", "Zgrada", "Selo", "Automobil", "Avion", "Brod", "Voz", "Bicikl",
-                "Svemir", "Mesec", "Sunce", "Zvezda", "Kisa", "Sneg", "Vetar", "Vatra", "Voda", "Zemlja"
-            };
+        "Pas", "Macka", "Lav", "Tigar", "Slon", "Zirafa", "Vuk", "Zmija", "Orao", "Ajkula",
+        "Delfin", "Majmun", "Konj", "Krava", "Svinja", "Pingvin", "Sova", "Zec", "Medved", "Pauk",
+        "Telefon", "Laptop", "Televizor", "Sat", "Kljuc", "Novcanik", "Knjiga", "Olovka", "Torba", "Kiseobran",
+        "Cipele", "Majica", "Jakna", "Naocale", "Kapa", "Sto", "Stolica", "Krevet", "Vrata", "Prozor",
+        "Cekic", "Srafciger", "Noz", "Kasika", "Viljuska", "Tanjir", "Casa", "Sveca", "Baterija", "Ogledalo",
+        "Pica", "Pljeskavica", "Sarma", "Burek", "Cevapi", "Sladoled", "Cokolada", "Jabuka", "Banana", "Kafa",
+        "Rakija", "Pivo", "Vino", "Mleko", "Hleb", "Jaje", "Sir", "Paradajz", "Krompir", "Luk",
+        "Skola", "Bolnica", "Crkva", "Kafana", "Bioskop", "Park", "Sumica", "Planina", "Reka", "More",
+        "Plaza", "Aerodrom", "Most", "Zgrada", "Selo", "Automobil", "Avion", "Brod", "Voz", "Bicikl",
+        "Svemir", "Mesec", "Sunce", "Zvezda", "Kisa", "Sneg", "Vetar", "Vatra", "Voda", "Zemlja"
+    };
 
             var batch = new BatchStatement();
 
             foreach (var word in wordsToSeed)
             {
+                string deterministicId = word.ToLower().Trim();
+
                 var boundInsert = _insertWordStatement!.Bind(
-                    Guid.NewGuid().ToString(), 
-                    word                        
+                    deterministicId,
+                    word
                 );
                 batch.Add(boundInsert);
             }
