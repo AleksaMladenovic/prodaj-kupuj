@@ -3,7 +3,7 @@ import { HubConnectionBuilder, HubConnection } from '@microsoft/signalr';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Copy, Check, LogOut, Play } from 'lucide-react'; // Instaliraj lucide-react ako nemaš
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 
 
@@ -21,6 +21,7 @@ const Lobby = () => {
     const user = useAuth().user;
     const username = user?.username;
     const navigate = useNavigate();
+    const location = useLocation();
 
     // Funkcija za kopiranje ID-a
     const copyToClipboard = () => {
@@ -36,7 +37,7 @@ const Lobby = () => {
             .build();
         setConnection(newConnection);
         return () => {
-            console.log("Čišćenje konekcije...");
+            // console.log("Čišćenje konekcije...");
         }
     }, []);
 
@@ -44,7 +45,7 @@ const Lobby = () => {
     useEffect(() => {
         const cleanup = () => {
             // if (!isRefresh())
-                handleLeaveAny();
+            handleLeaveAny();
         };
         window.addEventListener('beforeunload', cleanup);
         return () => {
@@ -52,6 +53,23 @@ const Lobby = () => {
             cleanup();
         };
     }, [connection, user]);
+
+    // useEffect(() => {
+    //     handleLeaveAny();
+    // }, [location]);
+
+    // useEffect(() => {
+    //     const cleanup = () => {
+    //         // if (!isRefresh())
+    //         handleLeaveAny();
+    //     };
+    //     window.addEventListener('popstate', cleanup);
+    //     // window.addEventListener('beforeunload', cleanup);
+    //     return () => {
+    //         window.removeEventListener('popstate', cleanup);
+    //         cleanup();
+    //     };
+    // }, [connection, user]);
 
     // const isRefresh = () => {
     //     if (window.performance && 'getEntriesByType' in window.performance) {
@@ -214,6 +232,7 @@ const Lobby = () => {
                             <p className="text-gray-500 text-sm mb-8">Čekamo da Host pokrene igru...</p>
 
                             {isCurrentUserHost ? (
+                                
                                 <motion.button
                                     whileHover={{ scale: 1.03 }}
                                     whileTap={{ scale: 0.97 }}
