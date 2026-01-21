@@ -3,7 +3,7 @@ import { useLocation, useParams } from 'react-router-dom';
 import { SendRoom } from './Lobby';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Send, Hash, User as UserIcon } from 'lucide-react';
+import { MessageSquare, Send, User as UserIcon, Clock, Edit3, History, ShieldAlert } from 'lucide-react';
 
 const Game: React.FC = () => {
     const location = useLocation();
@@ -11,9 +11,26 @@ const Game: React.FC = () => {
     const { user } = useAuth();
     const [showIntro, setShowIntro] = useState(true);
     const [message, setMessage] = useState("");
-
+    const [clueInput, setClueInput] = useState("");
+    const [timeLeft, setTimeLeft] = useState(0);
     const { roomDetails } = location.state as { roomDetails: SendRoom };
     const isImpostor = user?.username === roomDetails.usernameOfImpostor;
+    const isMyTurn = user?.username === roomDetails.currentTurnPlayerUsername;
+
+    useEffect(() => {
+        setTimeLeft(roomDetails.secondsPerTurn || 30);
+        const introTimer = setTimeout(() => setShowIntro(false), 5000);
+        return () => clearTimeout(introTimer);
+    }, [roomDetails]);
+
+    // Logika odbrojavanja tajmera
+    useEffect(() => {
+        if (showIntro || timeLeft <= 0) return;
+        const interval = setInterval(() => {
+            setTimeLeft((prev) => prev - 1);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [timeLeft, showIntro]);
 
     // Tajmer za intro ekran (5 sekundi)
     useEffect(() => {
@@ -27,7 +44,7 @@ const Game: React.FC = () => {
         <div className="min-h-screen bg-[#060608] text-white font-sans overflow-hidden">
             <AnimatePresence>
                 {showIntro ? (
-                    /* --- PHASE 1: INTRO EKRAN (CS:GO STYLE) --- */
+                    /* --- PHASE 1: INTRO EKRAN --- */
                     <motion.div
                         key="intro"
                         initial={{ opacity: 0 }}
@@ -82,6 +99,70 @@ const Game: React.FC = () => {
                             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-white/[0.03] blur-[120px] rounded-full" />
                             <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-white/[0.02] blur-[120px] rounded-full" />
                         </div>
+                        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+                            <motion.div 
+                                animate={{ x: [-20, 40, -20], y: [-10, 30, -10], scale: [1, 1.1, 1] }}
+                                transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+                                className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-white/[0.04] blur-[130px] rounded-full" 
+                            />
+                            <motion.div 
+                                animate={{ x: [20, -40, 20], y: [10, -30, 10], scale: [1.1, 1, 1.1] }}
+                                transition={{ duration: 20, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+                                className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-white/[0.03] blur-[130px] rounded-full" 
+                            />
+                        </div>
+                        <div className="absolute top-4 right-96 z-30 flex items-center gap-4 bg-black/60 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl shadow-2xl">
+                            <Clock className={timeLeft < 10 ? "text-red-500 animate-pulse" : "text-blue-400"} size={24} />
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest leading-none mb-1">Preostalo vreme</span>
+                                <span className={`text-2xl font-mono font-black leading-none ${timeLeft < 10 ? "text-red-500" : "text-white"}`}>
+                                    00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+                                </span>
+                            </div>
+                        </div>
+
+                         <aside className="w-80 bg-white/[0.01] border-r border-white/10 backdrop-blur-3xl flex flex-col">
+                            <div className="p-6 border-b border-white/10 bg-white/[0.02]">
+                                <h2 className="flex items-center gap-2 font-black uppercase tracking-widest text-xs text-gray-400">
+                                    <History size={14} className="text-blue-400" /> Istorija Tragova
+                                </h2>
+                            </div>
+                            <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                                {/* Ovde ćeš mapirati tragove iz baze */}
+                                <div className="p-3 bg-white/5 border border-white/5 rounded-xl">
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Igrač: Marko</p>
+                                    <p className="text-sm font-medium italic">"Vruće je..."</p>
+                                </div>
+                            </div>
+
+                            {/* INPUT ZA TRAG (Samo ako je igrač na potezu) */}
+                            <div className="p-6 bg-blue-500/5 border-t border-blue-500/20">
+                                {isMyTurn ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 text-blue-400 mb-2">
+                                            <Edit3 size={16} />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Tvoj red za trag</span>
+                                        </div>
+                                        <input 
+                                            type="text"
+                                            placeholder="UNESI TRAG..."
+                                            className="w-full bg-white/5 border-b-2 border-white/10 p-3 text-sm focus:border-blue-500 outline-none transition-all uppercase font-bold"
+                                            value={clueInput}
+                                            onChange={(e) => setClueInput(e.target.value)}
+                                        />
+                                        <button className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest hover:bg-gray-200 transition-all">
+                                            Potvrdi Trag
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4">
+                                        <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest leading-relaxed">
+                                            Čekamo da <br/> <span className="text-blue-400">{roomDetails.currentTurnPlayerUsername}</span> <br/> unese trag
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
 
                         {/* LEVA STRANA / CENTAR: Tajna Reč i Info */}
                         <div className="flex-grow flex flex-col items-center justify-center p-8 z-10 relative">
