@@ -26,6 +26,8 @@ public class GameRoom
     // Ko je trenutno na potezu (čuvamo UserId)
     public string? CurrentTurnPlayerId { get; set; }
 
+    public string? CurrentTurnPlayerUsername {  get; set; }
+
     // Ko je "impostor" u ovoj rundi (čuvamo UserId)
     public string? UserIdOfImpostor { get; set; }
     

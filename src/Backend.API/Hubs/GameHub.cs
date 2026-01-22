@@ -1,11 +1,14 @@
 namespace MyApp.Api.Hubs;
 
 using System.Net.Mail;
+using CommonLayer.DTOs;
 using Microsoft.AspNetCore.SignalR;
 using MyApp.CommonLayer.DTOs;
 using MyApp.CommonLayer.Enums;
 using MyApp.CommonLayer.Interfaces;
 using MyApp.CommonLayer.Models;
+using global::CommonLayer.DTOs;
+using global::CommonLayer.Models;
 
 public class GameHub : Hub
 {
@@ -108,6 +111,36 @@ public class GameHub : Hub
         catch (Exception ex)
         {
             Console.WriteLine($"Error sending message to room: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task SendClueToRoom(string roomId, SendClueDto clue)
+    {
+        try
+        {
+            var clueModel = new Clue
+            {
+                UserId = clue.UserId,
+                Username = clue.Username,
+                ClueWord = clue.ClueWord,
+                TimeStamp = DateTime.UtcNow
+            };
+
+            await _lobbyService.SendClueToRoomAsync(roomId, clueModel);
+
+            await Clients.Group(roomId).SendAsync("ReceiveClue", clue);
+
+            var updatedRoom = await _lobbyService.AdvanceTurnAsync(roomId);
+
+            if (updatedRoom != null)
+            {
+                await Clients.Group(roomId).SendAsync("RoomUpdated", updatedRoom);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"HUB ERROR: {ex.Message}");
             throw;
         }
     }

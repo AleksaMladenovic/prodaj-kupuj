@@ -93,6 +93,7 @@ builder.Services.AddScoped<IUserService, CassandraUserRepository>();
 builder.Services.AddScoped<ISecretWordRepository, CassandraSecretWordRepository>();
 builder.Services.AddScoped<ISecretWordService, SecretWordService>();
 builder.Services.AddScoped<IChatRepository, RedisChatRepository>();
+builder.Services.AddScoped<IClueRepository, RedisClueRepository>();
 // Kad budeš imao repozitorijume za Cassandru, registrovaćeš ih ovde.
 
 // NOVO: DODAVANJE SIGNALR-A

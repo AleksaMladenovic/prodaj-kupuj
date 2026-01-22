@@ -23,6 +23,7 @@ export enum GameState {
 export interface SendRoom {
     roomId: string;
     currentRound?: number;
+    currentTurnPlayerUserId?: string | null;
     currentTurnPlayerUsername?: string | null;
     secretWord?: string | null;
     usernameOfImpostor?: string | null;

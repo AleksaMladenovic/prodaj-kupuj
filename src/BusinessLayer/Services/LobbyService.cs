@@ -1,5 +1,6 @@
 using Cassandra.Serialization;
 using CommonLayer.Interfaces;
+using CommonLayer.Models;
 using MyApp.CommonLayer.Enums;
 using MyApp.CommonLayer.Interfaces;
 using MyApp.CommonLayer.Models;
@@ -11,15 +12,18 @@ public class LobbyService : ILobbyService
 {
     private readonly IGameRoomRepository _gameRoomRepository;
     private readonly ISecretWordService _secretWordService;
-
+    private readonly IUserService _userService;
     private readonly IChatRepository _chatRepository;
 
+    private readonly IClueRepository _clueRepository;
     // Zavisimo od interfejsa, ne od konkretne Redis implementacije!
-    public LobbyService(IGameRoomRepository gameRoomRepository, ISecretWordService secretWordService, IChatRepository chatRepository)
+    public LobbyService(IGameRoomRepository gameRoomRepository, ISecretWordService secretWordService, IChatRepository chatRepository,IClueRepository clueRepository,IUserService user)
     {
         _gameRoomRepository = gameRoomRepository;
         _secretWordService = secretWordService;
         _chatRepository = chatRepository;
+        _clueRepository = clueRepository;
+        _userService = user;
     }
 
     public async Task<GameRoom> CreateRoomAsync()
@@ -51,6 +55,7 @@ public class LobbyService : ILobbyService
         var playerIds = room.Players.Keys.ToList();
 
         room.CurrentTurnPlayerId = playerIds[Random.Shared.Next(playerIds.Count)];
+        room.CurrentTurnPlayerUsername = _userService.GetUserById(room.CurrentTurnPlayerId).Username;
 
         room.UserIdOfImpostor = playerIds[Random.Shared.Next(playerIds.Count)];
 
@@ -140,5 +145,59 @@ public class LobbyService : ILobbyService
             Console.WriteLine($"Error getting messages from room: {ex.Message}");
             throw;
         }
+    }
+
+    public async Task SendClueToRoomAsync(string roomId, Clue clue)
+    {
+        try
+        {
+            await _clueRepository.AddClueToRoomAsync(roomId, clue);
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending clue to room: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<List<Clue>> GetCluesFromRoomAsync(string roomId)
+    {
+        try
+        {
+            return await _clueRepository.GetCluesFromRoomAsync(roomId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting clues from room: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<GameRoom?> AdvanceTurnAsync(string roomId)
+    {
+        var room = await _gameRoomRepository.GetByIdAsync(roomId);
+
+        if (room == null || room.Players == null || room.Players.Count == 0)
+            return null;
+
+        var sortedPlayers = room.Players.Values.OrderBy(p => p.UserId).ToList();
+
+        int currentIndex = sortedPlayers.FindIndex(p => p.Username == room.CurrentTurnPlayerUsername);
+
+        if (currentIndex == -1) currentIndex = 0;
+
+        int nextIndex = (currentIndex + 1) % sortedPlayers.Count;
+
+        room.CurrentTurnPlayerUsername = sortedPlayers[nextIndex].Username;
+
+        if (nextIndex == 0)
+        {
+            room.CurrentRound++;
+        }
+
+        await _gameRoomRepository.SaveAsync(room);
+
+        return room;
     }
 }
