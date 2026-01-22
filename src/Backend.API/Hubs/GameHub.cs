@@ -67,7 +67,7 @@ public class GameHub : Hub
         var room = await _lobbyService.LeaveRoomAsync(userId, connectionId);
         if (room != null && room.Players.Count > 0)
         {
-            var roomId = await _gameRoomRepository.GetRoomFromUserId(userId);
+            var roomId = room.RoomId;
             if (!string.IsNullOrEmpty(roomId))
                 await Clients.Group(roomId).SendAsync("PlayerListUpdated", room.Players.Values.ToList());
         }

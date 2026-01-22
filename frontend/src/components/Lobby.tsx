@@ -41,6 +41,7 @@ const Lobby = () => {
     const { connection, isConnected } = useSignalR();
     const [players, setPlayers] = useState<Player[]>([]);
     const [copied, setCopied] = useState(false);
+    const [started, setStarted] = useState(false);
     const { roomId } = useParams();
     const user = useAuth().user;
     const username = user?.username;
@@ -54,67 +55,39 @@ const Lobby = () => {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    // Konekcija se sada kreira u SignalRContext provideru, samo je koristimo ovde
+    useEffect(() => {
 
-    // Poziva handleLeaveAny na bilo koji način napuštanja lobija
-    // useEffect(() => {
-    //     const cleanup = () => {
-    //         // if (!isRefresh())
-    //         handleLeaveAny();
-    //     };
-    //     window.addEventListener('beforeunload', cleanup);
-    //     return () => {
-    //         window.removeEventListener('beforeunload', cleanup);
-    //         cleanup();
-    //     };
-    // }, [connection, user]);
+        window.addEventListener('popstate', handleLeaveAny);
+        return () => {
+            if(!started)
+            handleLeaveAny();
+            window.removeEventListener('popstate', handleLeaveAny);
+        };
+    }, [connection, user]);
 
-    // useEffect(() => {
-    //     handleLeaveAny();
-    // }, [location]);
-
-    // useEffect(() => {
-    //     const cleanup = () => {
-    //         // if (!isRefresh())
-    //         handleLeaveAny();
-    //     };
-    //     window.addEventListener('popstate', cleanup);
-    //     // window.addEventListener('beforeunload', cleanup);
-    //     return () => {
-    //         window.removeEventListener('popstate', cleanup);
-    //         cleanup();
-    //     };
-    // }, [connection, user]);
-
-    // const isRefresh = () => {
-    //     if (window.performance && 'getEntriesByType' in window.performance) {
-    //         const navEntries = window.performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
-    //         if (navEntries.length > 0 && (navEntries[0] as PerformanceNavigationTiming).type === 'reload') {
-    //             return true;
-    //         }
-    //     }
-    //     // @ts-ignore
-    //     if (window.performance && window.performance.navigation && window.performance.navigation.type === 1) {
-    //         return true;
-    //     }
-    //     return false;
-    // };
 
     useEffect(() => {
         if (connection) {
             // Konekcija je već pokrenuta u SignalRContext, samo je koristimo
             connection.invoke("JoinRoom", roomId, username, user?.id);
-            
+
             connection.on("PlayerListUpdated", (updatedPlayers: Player[]) => {
                 setPlayers(updatedPlayers);
             });
             connection.on("GameStarted", (roomDetails: SendRoom) => {
+                window.removeEventListener('popstate', handleLeaveAny);
+                setStarted(true);
                 navigate(`/game/${roomDetails.roomId}`, { state: { roomDetails } });
             });
             connection.on("Error", (message: string) => {
                 alert(message);
                 navigate('/home');
             });
+        }
+        return () => {
+            connection?.off("PlayerListUpdated");
+            connection?.off("GameStarted");
+            connection?.off("Error");
         }
     }, [connection, roomId, username]);
 
@@ -126,6 +99,7 @@ const Lobby = () => {
     const [rounds, setRounds] = useState(2); // default 2
 
     const handleNapusti = async () => {
+        await handleLeaveAny();
         navigate('/home')
     };
 
