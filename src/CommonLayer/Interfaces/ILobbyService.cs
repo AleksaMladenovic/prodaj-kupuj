@@ -5,20 +5,14 @@ using global::CommonLayer.Models;
 
 public interface ILobbyService
 {
-    Task<GameRoom> CreateRoomAsync();
+    Task<string> CreateRoomAsync();
 
-    Task<GameRoom>? GetRoomAsync(string roomId);
-    Task StartGameAsync(string roomId, int maxNumberOfRounds, int durationPerUserInSeconds);
-    Task<GameRoom?> JoinRoomAsync(string roomId, string username, string userId, string connectionId);
-    Task<GameRoom?> LeaveRoomAsync(string userId, string connectionId);
-    Task<GameRoom?> RemovePlayerFromRoomAsync(string roomId, string userId, string connectionId);
-    Task SendMessageToRoomAsync(string roomId, Message message);
-    Task<List<Message>> GetMessagesFromRoomAsync(string roomId);
-
-    Task SendClueToRoomAsync(string roomId, Clue clue);
-    Task<List<Clue>> GetCluesFromRoomAsync(string roomId);
-    Task<GameRoom?> AdvanceTurnAsync(string roomId);
-
-    Task RegisterVoteAsync(string roomId, Vote vote);
+    Task JoinRoomAsync(string roomId, string username, string connectionId);
+    Task<string?> LeaveRoomAsync(string username);
+    Task<bool> RemovePlayerFromRoomAsync(string roomId, string username);
+    Task<List<string>> GetUsernamesForLobby(string roomId);
+    Task<string> GetHostOfRoomAsync(string roomId);
+    Task RecconectPlayerAsync(string roomId, string connectionId, string username);
+    Task<bool> RoomContainsPlayerAsync(string roomId, string username);
     // Dodaj ostale metode koje će ti trebati
 }

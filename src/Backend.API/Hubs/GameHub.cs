@@ -1,99 +1,65 @@
-namespace MyApp.Api.Hubs;
-
-using System.Net.Mail;
 using CommonLayer.DTOs;
+using CommonLayer.Models;
 using Microsoft.AspNetCore.SignalR;
 using MyApp.CommonLayer.DTOs;
 using MyApp.CommonLayer.Enums;
 using MyApp.CommonLayer.Interfaces;
 using MyApp.CommonLayer.Models;
-using global::CommonLayer.DTOs;
-using global::CommonLayer.Models;
+using StackExchange.Redis;
+
+namespace MyApp.Api.Hubs;
 
 public class GameHub : Hub
 {
     private readonly IGameRoomRepository _gameRoomRepository;
-    private readonly ILobbyService _lobbyService;
+    private readonly IGameService _gameService;
+    private readonly IDatabase _redisDb;
 
     // Hub može direktno da koristi repozitorijum jer upravlja "živim" stanjem
-    public GameHub(IGameRoomRepository gameRoomRepository, ILobbyService lobbyService)
+    public GameHub(IGameRoomRepository gameRoomRepository, IGameService gameService, IConnectionMultiplexer redis)
     {
         _gameRoomRepository = gameRoomRepository;
-        _lobbyService = lobbyService;
+        _gameService = gameService;
+        _redisDb = redis.GetDatabase();
     }
-
-    public async Task JoinRoom(string roomId, string username, string userId)
+    public async Task JoinGame(string roomId)
     {
         var connectionId = Context.ConnectionId;
-        var room = await _lobbyService.JoinRoomAsync(roomId, username, userId, connectionId);
-        if (room == null)
-        {
-            await Clients.Caller.SendAsync("Error", $"Soba sa ID-em '{roomId}' ne postoji.");
-            return;
-        }
         await Groups.AddToGroupAsync(connectionId, roomId);
-        await Clients.Group(roomId).SendAsync("PlayerListUpdated", room.Players.Values.ToList());
+        ReturnState state = await _gameService.GetStateAsync(roomId);
+        await Clients.Caller.SendAsync("GameState", state, 0);
+        _redisDb.StringSet($"gamestatenum:{roomId}", (0).ToString());
+        
     }
-
-    // Logika za izlazak iz sobe
-    public override async Task OnDisconnectedAsync(Exception? exception)
+    public async Task StateEnded(string roomId, int endedStateNum)
     {
-        var connectionId = Context.ConnectionId;
-        var userId = await _gameRoomRepository.GetUserIdForConnection(connectionId);
-        if (string.IsNullOrEmpty(userId))
-        {
-            await base.OnDisconnectedAsync(exception);
+        var lockKey = $"lock:gamestate:{roomId}";
+        var lockValue = Guid.NewGuid().ToString();
+
+        // Pokušaj da uzmeš distributed lock za ovu sobu (ekspira za 5s da izbegnemo deadlock)
+        if (!await _redisDb.LockTakeAsync(lockKey, lockValue, TimeSpan.FromSeconds(5)))
             return;
-        }
-        var roomId = await _gameRoomRepository.GetRoomFromUserId(userId);
-        if (string.IsNullOrEmpty(roomId))
+
+        try
         {
-            await base.OnDisconnectedAsync(exception);
-            return;
+            // Re-read unutar lock-a da izbegnemo TOCTOU
+            var currentStateNumVal = await _redisDb.StringGetAsync($"gamestatenum:{roomId}");
+            var hasValue = !currentStateNumVal.IsNullOrEmpty;
+            var currentStateNum = hasValue ? (int)currentStateNumVal : 0;
+
+            if (currentStateNum == endedStateNum)
+            {
+                await _redisDb.StringIncrementAsync($"gamestatenum:{roomId}");
+                await _gameService.SetNextStateAsync(roomId);
+                var updatedState = await _gameService.GetStateAsync(roomId);
+                await Clients.Group(roomId).SendAsync("GameState", updatedState, currentStateNum + 1);
+            }
         }
-        var room = await _lobbyService.RemovePlayerFromRoomAsync(roomId, userId, connectionId);
-        await base.OnDisconnectedAsync(exception);
-        if (room != null)
+        finally
         {
-            if (room.Players.Count == 0)
-                return;
-            await Clients.Group(roomId).SendAsync("PlayerListUpdated", room.Players.Values.ToList());
+            await _redisDb.LockReleaseAsync(lockKey, lockValue);
         }
     }
-
-    public async Task LeaveRoom(string userId)
-    {
-        var connectionId = Context.ConnectionId;
-        var room = await _lobbyService.LeaveRoomAsync(userId, connectionId);
-        if (room != null && room.Players.Count > 0)
-        {
-            var roomId = room.RoomId;
-            if (!string.IsNullOrEmpty(roomId))
-                await Clients.Group(roomId).SendAsync("PlayerListUpdated", room.Players.Values.ToList());
-        }
-    }
-
-    public async Task StartGame(string roomId, int maxNumberOfRounds, int durationPerUserInSeconds)
-    {
-        await _lobbyService.StartGameAsync(roomId, maxNumberOfRounds, durationPerUserInSeconds);
-        var room = await _gameRoomRepository.GetByIdAsync(roomId);
-        SendRoom sendRoom = new SendRoom
-        {
-            RoomId = room!.RoomId,
-            CurrentRound = room.CurrentRound,
-            CurrentTurnPlayerUsername = room.Players.ContainsKey(room.CurrentTurnPlayerId!) ? room.Players[room.CurrentTurnPlayerId!].Username : null,
-            SecretWord = room.SecretWord,
-            UsernameOfImpostor = room.Players.ContainsKey(room.UserIdOfImpostor!) ? room.Players[room.UserIdOfImpostor!].Username : null,
-            State = room.State,
-            NumberOfRounds = room.NumberOfRounds,
-            SecondsPerTurn = room.SecondsPerTurn
-        };
-        if (room != null)
-        {
-            await Clients.Group(roomId).SendAsync("GameStarted", sendRoom);
-        }
-    }
-
     public async Task SendMessageToRoom(string roomId, SendMessageDto message)
     {
         try
@@ -105,7 +71,7 @@ public class GameHub : Hub
                 Content = message.Content,
                 Timestamp = DateTime.UtcNow
             };
-            await _lobbyService.SendMessageToRoomAsync(roomId, messageModel);
+            await _gameService.SendMessageToRoomAsync(roomId, messageModel);
             await Clients.Group(roomId).SendAsync("ReceiveMessage", message);
         }
         catch (Exception ex)
@@ -127,12 +93,11 @@ public class GameHub : Hub
                 TimeStamp = DateTime.UtcNow
             };
 
-            await _lobbyService.SendClueToRoomAsync(roomId, clueModel);
+            await _gameService.SendClueToRoomAsync(roomId, clueModel);
 
             await Clients.Group(roomId).SendAsync("ReceiveClue", clue);
 
-            var updatedRoom = await _lobbyService.AdvanceTurnAsync(roomId);
-
+            var updatedRoom = await _gameService.AdvanceTurnAsync(roomId);
             if (updatedRoom != null)
             {
                 await Clients.Group(roomId).SendAsync("RoomUpdated", updatedRoom);
@@ -158,12 +123,11 @@ public class GameHub : Hub
                 TargetUsername = voteDto.TargetUsername ?? "Preskočeno"
             };
 
-            await _lobbyService.RegisterVoteAsync(roomId, voteModel);
+            await _gameService.RegisterVoteAsync(roomId, voteModel);
 
             await Clients.Group(roomId).SendAsync("UserVoted", voteDto.Username);
 
-            var updatedRoom = await _lobbyService.GetRoomAsync(roomId);
-
+            var updatedRoom = await _gameService.GetRoomAsync(roomId);
             if (updatedRoom != null)
             {
                 await Clients.Group(roomId).SendAsync("RoomUpdated", updatedRoom);
@@ -175,4 +139,6 @@ public class GameHub : Hub
             throw;
         }
     }
+    
 }
+
