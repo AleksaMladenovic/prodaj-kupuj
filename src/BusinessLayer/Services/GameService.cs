@@ -65,18 +65,21 @@ public class GameService : IGameService
             case GameState.Voting:
                 state.VotingStates = new VotingStates();
                 break;
+            case GameState.VoteResult: // NOVO
+                var ejected = await _gameRoomRepository.GetEdjectedPlayer(roomId);
+                var impostor = await _gameRoomRepository.GetImpostorUsername(roomId);
+                state.VoteResultStates = new VoteResultStates
+                {
+                    EjectedUsername = ejected,
+                    WasImpostor = ejected == impostor
+                };
+                break;
             case GameState.GameFinished:
                 state.GameFinishedStates = new GameFinishedStates();
-                var ejectedPlayer = await _gameRoomRepository.GetEdjectedPlayer(roomId);
-                var users = await _gameRoomRepository.GetUsers(roomId);
-                var votes = await _voteRepository.GetVotesAsync(roomId, await _gameRoomRepository.GetCurrentRound(roomId));
-                var impostorUsername = await _gameRoomRepository.GetImpostorUsername(roomId);
-                foreach (var user in users)
-                {
-                    var votedImpostor = votes.FirstOrDefault(v => v.Username == user)?.TargetUsername == impostorUsername;
-                    state.GameFinishedStates.PlayerVoteImpostor[user] = votedImpostor;
-                }
-                state.GameFinishedStates.ImpostorWon = ejectedPlayer != impostorUsername;
+                var Ejected = await _gameRoomRepository.GetEdjectedPlayer(roomId);
+                var targetImpostor = await _gameRoomRepository.GetImpostorUsername(roomId);
+
+                state.GameFinishedStates.ImpostorWon = (Ejected != targetImpostor);
                 break;
         }
         return state;
@@ -86,11 +89,15 @@ public class GameService : IGameService
     {
         var currentState = await _gameRoomRepository.GetCurrentState(roomId);
         GameState nextState;
+        int nextStateDuration = 0;
+
         switch (currentState.State)
         {
             case GameState.ShowSecret:
                 nextState = GameState.InProgress;
+                nextStateDuration = await _gameRoomRepository.GetDurationPerUserInSeconds(roomId);
                 break;
+
             case GameState.InProgress:
                 var currentPlayer = await _gameRoomRepository.GetCurrentPlayer(roomId);
                 var users = await _gameRoomRepository.GetUsers(roomId);
@@ -98,56 +105,85 @@ public class GameService : IGameService
                 int nextIndex = (currentIndex + 1) % users.Count;
                 var nextPlayer = users[nextIndex];
                 var firstPlayer = await _gameRoomRepository.GetFirstPlayer(roomId);
-                if(nextPlayer ==  firstPlayer)
-                nextState = GameState.Voting;
-                else nextState = GameState.InProgress;
+
+                if (nextPlayer == firstPlayer)
+                    nextState = GameState.Voting;
+                else
+                    nextState = GameState.InProgress;
+
                 await _gameRoomRepository.UpdateCurrentPlayer(roomId, nextPlayer);
+                nextStateDuration = (nextState == GameState.Voting)
+                    ? GameStatesInSeconds.Values[(int)GameState.Voting]
+                    : await _gameRoomRepository.GetDurationPerUserInSeconds(roomId);
                 break;
+
             case GameState.Voting:
                 var currentRound = await _gameRoomRepository.GetCurrentRound(roomId);
-                var maxRounds = await _gameRoomRepository.GetMaxNumberOfRounds(roomId);
                 var votes = await _voteRepository.GetVotesAsync(roomId, currentRound);
-                var voteCounts = votes.GroupBy(v => v.TargetUsername)
-                                      .ToDictionary(g => g.Key, g => g.Count());
-                string? ejectedPlayer = null;
-                if (voteCounts.Count > 0)
+                var totalPlayers = await _gameRoomRepository.NumberOfUsers(roomId);
+
+                var playerVotes = votes.Where(v => !string.IsNullOrEmpty(v.TargetUsername) && v.TargetUsername != "skip")
+                                       .GroupBy(v => v.TargetUsername)
+                                       .ToDictionary(g => g.Key, g => g.Count());
+
+                string ejectedPlayer = "skip";
+
+                if (playerVotes.Count > 0)
                 {
-                    int maxVotes = voteCounts.Values.Max();
-                    var topCandidates = voteCounts.Where(kv => kv.Value == maxVotes).Select(kv => kv.Key).ToList();
-                    if (topCandidates[0]!="" && topCandidates.Count == 1 && voteCounts[topCandidates[0]] >= (await _gameRoomRepository.NumberOfUsers(roomId)) / 2)
-                    {
+                    int maxVotes = playerVotes.Values.Max();
+                    var topCandidates = playerVotes.Where(kv => kv.Value == maxVotes)
+                                                   .Select(kv => kv.Key)
+                                                   .ToList();
+
+                    // po tvojoj logici: mora da bude jedinstven pobednik + >= polovine
+                    if (topCandidates.Count == 1 && maxVotes >= (totalPlayers / 2.0))
                         ejectedPlayer = topCandidates[0];
-                    }
                 }
-                if (currentRound >= maxRounds || ejectedPlayer != null)
-                {
-                    await _gameRoomRepository.SetEdjectedPlayer(roomId, ejectedPlayer);
-                    nextState = GameState.GameFinished;
-                }
-                else
-                {
-                    await _gameRoomRepository.IncrementAndGetCurrentRound(roomId);
-                    nextState = GameState.InProgress;
-                }
+
+                await _gameRoomRepository.SetEdjectedPlayer(roomId, ejectedPlayer);
+
+                nextState = GameState.VoteResult;
+                nextStateDuration = 5;
                 break;
+
+                case GameState.VoteResult:
+                {
+                    var lastEjected = await _gameRoomRepository.GetEdjectedPlayer(roomId); 
+                    var round = await _gameRoomRepository.GetCurrentRound(roomId);
+                    var maxR = await _gameRoomRepository.GetMaxNumberOfRounds(roomId);
+
+                    bool someoneEjected = !string.IsNullOrEmpty(lastEjected) && lastEjected != "skip";
+
+                    if (someoneEjected)
+                    {
+                        nextState = GameState.GameFinished;
+                        nextStateDuration = 0;
+                        break;
+                    }
+
+                    if (round >= maxR)
+                    {
+                        nextState = GameState.GameFinished;
+                        nextStateDuration = 0;
+                        break;
+                    }
+
+                    await _gameRoomRepository.IncrementAndGetCurrentRound(roomId);
+
+                    var firstPlayers = await _gameRoomRepository.GetFirstPlayer(roomId);
+                    await _gameRoomRepository.UpdateCurrentPlayer(roomId, firstPlayers);
+
+                    nextState = GameState.InProgress;
+                    nextStateDuration = await _gameRoomRepository.GetDurationPerUserInSeconds(roomId);
+                    break;
+                }
+
             default:
                 nextState = GameState.InProgress;
                 break;
         }
-        if(nextState == GameState.GameFinished)
-        {
-            await _gameRoomRepository.SetNewState(roomId, nextState, 0);
 
-            return;
-        }else if(nextState == GameState.InProgress)
-        {
-            await _gameRoomRepository.SetNewState(roomId, nextState, await _gameRoomRepository.GetDurationPerUserInSeconds(roomId));    
-            return;
-        }else
-        {
-            await _gameRoomRepository.SetNewState(roomId, nextState, GameStatesInSeconds.Values[(int)nextState]);    
-            return;
-        }
+        await _gameRoomRepository.SetNewState(roomId, nextState, nextStateDuration);
     }
 
     public async Task SendMessageToRoomAsync(string roomId, Message message)

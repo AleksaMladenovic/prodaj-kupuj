@@ -17,6 +17,7 @@ export interface IReturnState {
     showSecretStates?: IShowSecretStates;
     inProgressStates?: IInProgressStates;
     votingStates?: IVotingStates;
+    voteResultStates?: IVoteResultStates; // DODAJ OVO
     gameFinishedStates?: IGameFinishedStates;
 }
 
@@ -33,6 +34,11 @@ export interface IInProgressStates {
 }
 
 export interface IVotingStates {}
+
+export interface IVoteResultStates {
+    ejectedUsername: string | null; 
+    wasImpostor: boolean;
+}
 
 export interface IGameFinishedStates {
     impostorWon: boolean;

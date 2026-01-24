@@ -9,6 +9,7 @@ public class ReturnState
     public ShowSecretStates? ShowSecretStates { get; set; }
     public InProgressStates? InProgressStates { get; set; }
     public VotingStates? VotingStates { get; set; }
+    public VoteResultStates? VoteResultStates { get; set; } // NOVO
     public GameFinishedStates? GameFinishedStates { get; set; }
 }
 
@@ -29,6 +30,11 @@ public class InProgressStates
 public class VotingStates
 {
     
+}
+public class VoteResultStates
+{
+    public string? EjectedUsername { get; set; } 
+    public bool WasImpostor { get; set; }
 }
 
 public class GameFinishedStates

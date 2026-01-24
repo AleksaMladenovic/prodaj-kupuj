@@ -41,6 +41,12 @@ const Game: React.FC = () => {
     // Za prikaz rezultata izbacivanja (npr. 5 sekundi)
     const [showEjectionScreen, setShowEjectionScreen] = useState(false);
 
+    //MILAN
+    const [showEndScreen, setShowEndScreen] = useState(false);
+    const [gameResult, setGameResult] = useState<{ winner: string; points: number;won: boolean} | null>(null);
+    
+
+
     const [gameState, setGameState] = useState<IReturnState | null>(null);
     const [isImpostor, setIsImpostor] = useState(false);
     const [isMyTurn, setIsMyTurn] = useState(false);
@@ -52,11 +58,25 @@ const Game: React.FC = () => {
     const [maxRounds, setMaxRounds] = useState<number>(1);
     const [secretWord, setSecretWord] = useState<string>("");
     const [numOfPlayers, setNumOfPlayers] = useState<number>(0);
+    const lastStateEndedRef = React.useRef<number | null>(null);
+
+    const timeoutSentKeyRef = React.useRef<string | null>(null);
+
+const safeStateEnded = () => {
+  if (!connection) return;
+  if (lastStateEndedRef.current === currentStateNumber) return; // već poslato
+  lastStateEndedRef.current = currentStateNumber;
+
+  connection.invoke("StateEnded", roomId, currentStateNumber)
+    .catch(console.error);
+};
     // --- DINAMIČKE VARIJABLE ---
     // Koristimo currentRoom jer se on menja kroz SignalR
     // const isImpostor = user?.username === currentRoom.usernameOfImpostor;
     // const isMyTurn = user?.username === currentRoom.currentTurnPlayerUsername;
     // const isVotingPhase = currentRoom.state === 2;
+   
+    
 
     // 0. Kreiranje SignalR konekcije na GameHub
     useEffect(() => {
@@ -77,66 +97,148 @@ const Game: React.FC = () => {
         };
     }, []);
 
+
+
+
+    useEffect(() => {
+  if (!connection) return;
+  if (gameState?.state !== GameState.InProgress) return;
+  if (!isMyTurn) return;
+
+  // BITNO: samo tačno na 0
+  if (timeLeft !== 0) return;
+
+  // Key po potezu (stateNumber + ko je na redu)
+  const key = `${currentStateNumber}:${currentTurnUsername}`;
+
+  if (timeoutSentKeyRef.current === key) return;
+  timeoutSentKeyRef.current = key;
+
+  // odmah pomeri timer da ne okine ponovo dok ne stigne novi state
+  setTimeLeft(-1);
+
+  const clueDto = {
+    userId: user?.id || '',
+    username: user?.username || 'Nepoznati',
+    clueWord: "",                 // PRAZAN STRING
+    timestamp: new Date().toISOString()
+  };
+
+  connection.invoke("SendClueToRoom", roomId, clueDto)
+    .catch(err => console.error("Greška pri slanju praznog traga:", err))
+    .finally(() => {
+      safeStateEnded();
+    });
+}, [
+  timeLeft,
+  connection,
+  gameState?.state,
+  isMyTurn,
+  currentStateNumber,
+  currentTurnUsername,
+  roomId,
+  user?.id,
+  user?.username
+]);
+
+
     // 1. Kontrola Intro ekrana - izvršava se samo jednom kada se konekcija uspostavi
     useEffect(() => {
-        if (!connection) return; // Čekaj da se konekcija uspostavi
+        if (showIntro) {
+            const timer = setTimeout(() => {
+                setShowIntro(false);
+                safeStateEnded();
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [showIntro, connection, roomId, currentStateNumber]);
 
-        const timer = setTimeout(() => {
-            setShowIntro(false);
-            console.log("Intro završen, obaveštavanje servera...");
-            // Koristimo trenutnu vrednost currentStateNumber iz closure-a
-            connection.invoke("StateEnded", roomId, currentStateNumber)
-                .catch(err => console.error("Greška pri obaveštavanju o završetku stanja:", err));
-        }, 5000);
 
-        return () => clearTimeout(timer);
-    }, [connection]); // Samo connection u dependency array - izvršava se jednom!
+useEffect(() => {
+  if (!connection) return;
+  if (gameState?.state !== GameState.VoteResult) return;
+
+  const timer = setTimeout(() => {
+    safeStateEnded();
+  }, 5000);
+
+  return () => clearTimeout(timer);
+}, [gameState?.state, connection, roomId, currentStateNumber]);
 
     // 2. Logika tajmera - Resetuje se kada se promeni currentRoom (novi igrač)
     useEffect(() => {
-        if (showIntro || timeLeft <= 0) return;
-        const interval = setInterval(() => {
-            setTimeLeft((prev) => prev - 1);
-        }, 1000);
+        if (showIntro || showEndScreen || timeLeft <= 0) return;
+        const interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
         return () => clearInterval(interval);
-    }, [timeLeft, showIntro]);
+    }, [timeLeft, showIntro, showEndScreen]);
 
+     // 3. LOGIKA ZA PROMENU STANJA (Glavni mozak komponente)
     useEffect(() => {
-        console.log("Promena gameState:", gameState);
-        if (gameState?.state === GameState.ShowSecret) {
-            setShowIntro(true);
-            setIsImpostor(user?.username === gameState!.showSecretStates?.impostorName);
-            setNumOfPlayers(gameState!.showSecretStates?.players.length || 0);
-            console.log("Postavljeno broj igrača:", gameState!.showSecretStates?.players.length || 0);
-            setPlayers(gameState!.showSecretStates?.players || []);
-            setIsVotingPhase(false);
-            setSecretWord(gameState!.showSecretStates?.secretWord || "");
-            setIsMyTurn(false);
-        } else if (gameState?.state === GameState.InProgress) {
-            setShowIntro(false);
-            setIsMyTurn(user?.username === gameState!.inProgressStates?.currentPlayer);
-            setCurrentTurnUsername(gameState!.inProgressStates?.currentPlayer || "");
-            setRoundNumber(gameState!.inProgressStates?.roundNumber || 1);
-            setMaxRounds(gameState!.inProgressStates?.maxRounds || 1);
-            setIsVotingPhase(false);
-            setVotedPlayers([]);
-            setHasVoted(false);
-        } else if (gameState?.state === GameState.Voting) {
-            setShowIntro(false);
-            setIsVotingPhase(true);
-            setIsMyTurn(false);
-        } else if (gameState?.state === GameState.GameFinished) {
-            setVotedPlayers([]);
-            setHasVoted(false);
-            console.log("Runda završena, priprema za sledeću...");
-        }
-        else {
-            setShowIntro(false);
-            setIsVotingPhase(false);
-            setIsMyTurn(false);
-        }
-    }
-        , [gameState])
+        if (!gameState) return;
+
+        
+        console.log("Trenutno stanje sa beka:", gameState.state);
+
+            if (gameState.state !== GameState.Voting) {
+                setHasVoted(false);
+                setVotedPlayers([]);
+                setIsVotingPhase(false);
+            } else {
+                setIsVotingPhase(true);
+            }
+
+            if (gameState.state === GameState.VoteResult) {
+                setShowEjectionScreen(true);
+            } else {
+                setShowEjectionScreen(false);
+            }
+
+        switch (gameState.state) {
+            case GameState.ShowSecret:
+                setIsImpostor(user?.username === gameState.showSecretStates?.impostorName);
+                setSecretWord(gameState.showSecretStates?.secretWord || "");
+                setPlayers(gameState.showSecretStates?.players || []);
+                setNumOfPlayers(gameState.showSecretStates?.players.length || 0);
+                setShowIntro(true); // Tek sad palimo intro
+                break;
+
+            case GameState.InProgress:
+                timeoutSentKeyRef.current = null; 
+                setShowIntro(false);
+                setShowEjectionScreen(false);
+                setIsMyTurn(user?.username === gameState.inProgressStates?.currentPlayer);
+                setCurrentTurnUsername(gameState.inProgressStates?.currentPlayer || "");
+                setRoundNumber(gameState.inProgressStates?.roundNumber || 1);
+                setIsVotingPhase(false);
+                setVotedPlayers([]);
+                setMaxRounds(gameState.inProgressStates?.maxRounds || 1);
+                setTimeLeft(30); // Resetuj lokalni tajmer
+                break;
+
+            case GameState.Voting:
+                setIsVotingPhase(true);
+                break;
+
+            case GameState.GameFinished:
+                const impWon = gameState.gameFinishedStates?.impostorWon; 
+                
+                const localWon = (isImpostor === true && impWon === true) || (isImpostor === false && impWon === false);
+
+                setGameResult({
+                    winner: impWon ? "Impostor" : "Crewmates",
+                    points: localWon ? (isImpostor ? 5 : 3) : 0,
+                    won: localWon 
+                });
+                setShowEndScreen(true);
+            break;
+
+            case GameState.VoteResult:
+                setShowEjectionScreen(true);
+                setTimeout(() => setShowEjectionScreen(false), 5000);
+                break;
+            }
+            
+    }, [gameState,isImpostor]);
 
     // 3. SIGNALR LISTENERS (Sređen cleanup da spreči dupliranje)
     useEffect(() => {
@@ -205,8 +307,7 @@ const Game: React.FC = () => {
             if (!connection) return;
             setVotedPlayers([]);
             setHasVoted(false);
-            connection.invoke("StateEnded", roomId, currentStateNumber)
-                .catch(err => console.error("Greška pri obaveštavanju o završetku stanja:", err));
+            safeStateEnded();
         }
     }, [connection, roomId, currentStateNumber, isVotingPhase, votedPlayers, numOfPlayers])
     // Dodatni mali effect za čišćenje glasanja
@@ -217,11 +318,7 @@ const Game: React.FC = () => {
     // }, [isVotingPhase]);
 
 
-    const stateEndedHandler = () => {
-        if (!connection) return;
-        connection.invoke("StateEnded", roomId, currentStateNumber)
-            .catch(err => console.error("Greška pri obaveštavanju o završetku stanja:", err));
-    }
+   
 
 
     // --- HANDLERS ---
@@ -254,22 +351,20 @@ const Game: React.FC = () => {
         connection.invoke("SendClueToRoom", roomId, clueDto)
             .then(() => setClue("")) // Čistimo polje nakon slanja
             .catch(err => console.error("Greška pri slanju traga:", err));
-        connection.invoke("StateEnded", roomId, currentStateNumber)
+       safeStateEnded();
     };
-    const handleVote = (targetUsername: string | null) => {
-        if (hasVoted || !connection) return;
+    const handleVote = (target: string | null) => {
+    if (hasVoted || !connection) return;
 
-        const voteDto = {
-            roomId: roomId,
-            round: roundNumber,
-            username: user?.username,
-            targetUsername: targetUsername,
-        };
-
-        connection.invoke("VoteForPlayer", voteDto)
-            .then(() => setHasVoted(true))
-            .catch(err => console.error("Greška pri glasanju:", err));
+    const voteDto = { 
+        roomId, 
+        round: roundNumber, 
+        username: user?.username, 
+        targetUsername: target || "skip"
     };
+
+    connection.invoke("VoteForPlayer", voteDto).then(() => setHasVoted(true));
+};
 
     return (
         <div className="min-h-screen bg-[#060608] text-white font-sans overflow-hidden">
@@ -424,32 +519,49 @@ const Game: React.FC = () => {
                                 </motion.div>
                             )}
                         </AnimatePresence>
+                         {/* --- 2. EJECTION SCREEN --- */}
+                {showEjectionScreen && (
+                    <motion.div key="ejection" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[110] bg-black flex flex-col items-center justify-center text-center p-10">
+                        <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
+                            {(!gameState?.voteResultStates?.ejectedUsername || gameState?.voteResultStates?.ejectedUsername === "skip") ? (
+                                <>
+                                    <h2 className="text-5xl md:text-7xl font-black italic uppercase text-white mb-6">NIKO NIJE IZBAČEN</h2>
+                                    <p className="text-xl text-blue-400 font-black tracking-[0.5em] uppercase animate-pulse">POTRAGA SE NASTAVLJA...</p>
+                                </>
+                            ) : (
+                                <>
+                                    <h2 className="text-5xl md:text-8xl font-black italic uppercase text-white mb-6 underline decoration-red-600 underline-offset-8">
+                                        {gameState?.voteResultStates?.ejectedUsername.toUpperCase()} JE IZBAČEN
+                                    </h2>
+                                    <p className={`text-2xl font-black tracking-[0.4em] uppercase mt-4 ${gameState?.voteResultStates?.wasImpostor ? 'text-green-500' : 'text-red-600'}`}>
+                                        {gameState?.voteResultStates?.wasImpostor ? "BIO JE IMPOSTOR" : "NIJE BIO IMPOSTOR"}
+                                    </p>
+                                </>
+                            )}
+                        </motion.div>
+                    </motion.div>
+                )}
 
-                        {/* --- 2. CINEMATIC EJECTION EKRAN --- */}
-                        {/* <AnimatePresence>
-                                {showEjectionScreen && (
-                                    <motion.div 
-                                        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
-                                        className="fixed inset-0 z-[110] bg-black flex flex-col items-center justify-center text-center p-10"
-                                    >
-                                        <motion.div
-                                            animate={{ y: [0, -10, 0] }} transition={{ duration: 4, repeat: Infinity }}
-                                        >
-                                            <h2 className="text-5xl md:text-8xl font-black italic uppercase tracking-tighter text-white mb-6">
-                                                {currentRoom.lastEjectedUsername === "Nerešeno" 
-                                                    ? "NIKO NIJE IZBAČEN" 
-                                                    : `${currentRoom.lastEjectedUsername?.toUpperCase()} JE IZBAČEN`}
-                                            </h2>
-                                            <p className="text-xl text-red-600 font-black tracking-[0.5em] uppercase">
-                                                {currentRoom.isGameOver? "IMPOSTOR JE PRONAĐEN" : "POTRAGA SE NASTAVLJA..."}
-                                            </p>
-                                        </motion.div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence> */}
-
-
-
+                {/* --- 3. END GAME SCREEN --- */}
+                {showEndScreen && (
+                    <motion.div key="endgame" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[200] bg-[#060608]/98 backdrop-blur-2xl flex flex-col items-center justify-center text-center p-6">
+                        <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }} transition={{ type: "spring", damping: 15 }}>
+                            <h2 className={`text-7xl md:text-[140px] font-black italic uppercase tracking-tighter mb-4 ${gameResult?.won ? 'text-yellow-500 drop-shadow-[0_0_50px_rgba(234,179,8,0.4)]' : 'text-red-600 drop-shadow-[0_0_50px_rgba(220,38,38,0.4)]'}`}>
+                                {gameResult?.won ? 'VICTORY' : 'DEFEAT'}
+                            </h2>
+                            <p className="text-2xl text-gray-500 uppercase tracking-[0.6em] font-black mb-12">Pobednik: <span className="text-white">{gameResult?.winner}</span></p>
+                            <div className="bg-white/[0.03] border border-white/10 p-12 rounded-[3.5rem] shadow-2xl relative overflow-hidden group max-w-2xl min-w-[400px]">
+                                <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent ${gameResult?.won ? 'via-yellow-500' : 'via-red-600'} to-transparent`} />
+                                <span className="text-xs text-gray-500 font-black block mb-4 uppercase">Zarađeni bodovi</span>
+                                <div className="flex items-center justify-center gap-4">
+                                    <span className={`text-8xl font-black ${gameResult?.won ? 'text-white' : 'text-gray-700'}`}>+{gameResult?.points}</span>
+                                    <span className="text-yellow-500 font-black text-xl uppercase leading-none">Points</span>
+                                </div>
+                                <button onClick={() => window.location.href = '/home'} className="mt-10 w-full py-5 bg-white text-black font-black uppercase text-xs rounded-2xl hover:bg-gray-200 transition-all">Završi Sesiju</button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
                         {/* CENTAR: TAJNA REČ */}
                         <div className="flex-grow flex flex-col items-center justify-center p-8 z-10 relative">
                             <motion.div className="bg-white/[0.03] border border-white/10 backdrop-blur-3xl p-16 rounded-[4rem] shadow-2xl text-center">
